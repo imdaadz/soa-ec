@@ -40,7 +40,7 @@ class ProductController extends Controller
 				}),
 			],
 			'qty' => 'required|max:255|integer', 
-			'price' => 'required|max:255|integer', 
+			'price' => 'required|integer', 
 			'desc' => 'required|max:255', 
 			'photo' => 'max:255', 
 		];
@@ -129,7 +129,7 @@ class ProductController extends Controller
 			$rules = [
 				'name' => 'required|max:255', 
 				'sku' => 'required|max:255',
-				'price' => 'required|max:255|integer', 
+				'price' => 'required|integer', 
 				'desc' => 'required|max:255', 
 				'photo' => 'max:255', 
 			];
@@ -143,7 +143,7 @@ class ProductController extends Controller
 						return $query->where('user_id', $user->id);
 					}),
 				],
-				'price' => 'required|max:255|integer', 
+				'price' => 'required|integer', 
 				'desc' => 'required|max:255', 
 				'photo' => 'max:255', 
 			];
