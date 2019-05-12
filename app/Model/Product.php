@@ -4,7 +4,7 @@ namespace App\Model;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-
+use DB;
 
 class Product extends Model
 {
@@ -51,7 +51,105 @@ class Product extends Model
 	{
 		return $this->belongsTo('App\User','user_id');
 	}
+	public function most($user_id,$limit = 30, $offset = 0, $start = null, $end= null){
+		if(empty($start) and empty($end))
+			$product = DB::select("SELECT
+					SUM(total_qty) total,
+					product_id,
+					p.*
+				FROM
+					order_outs o 
+				JOIN `order_out_details` d ON o.id = d.order_out_id
+				JOIN products p ON d.product_id = p.id
+				WHERE o.user_id = ?
+				GROUP BY
+					`product_id`
+				ORDER BY 1 DESC
+				LIMIT ?,?", [$user_id,$offset,$limit]);
+		else
+			$product = DB::select("SELECT
+				SUM(total_qty) total,
+				product_id,
+				p.*
+			FROM
+				order_outs o 
+			JOIN `order_out_details` d ON o.id = d.order_out_id
+			JOIN products p ON d.product_id = p.id
+			WHERE o.user_id = ? AND DATE(o.created_at) between ? and ?
+			GROUP BY
+				`product_id`
+			ORDER BY 1 DESC
+			LIMIT ?,?", [$user_id, $start, $end, $offset,$limit]);
+
+		$result = array();
+		foreach ($product as $row) {
+
+			$result[$row->product_id] = array(
+				'id' => $row->id,
+				'name' => $row->product_name,
+				'qty' => (int)$row->product_sku,
+				'sku' => $row->product_qty,
+				'price' => (int)$row->product_price,
+				'total' => (int)$row->total
+			);
+		}
+		return array_values($result);	
+	}
 	
+	public function forecast($user_id,$limit = 30, $offset = 0, $id = 0){
+		if(empty($id))
+			$product = DB::select("SELECT
+					AVG(`total_qty`) avg_sales,
+					SUM(total_qty) total,
+					product_id,
+					p.*
+				FROM
+					order_outs o 
+				JOIN `order_out_details` d ON o.id = d.order_out_id
+				JOIN products p ON d.product_id = p.id
+				WHERE o.user_id = ?
+				GROUP BY
+					`product_id`
+				ORDER BY 2 DESC
+				LIMIT ?,?", [$user_id,$offset,$limit]);
+		else
+			$product = DB::select("SELECT
+					AVG(`total_qty`) avg_sales,
+					SUM(total_qty) total,
+					product_id,
+					p.*
+				FROM
+					order_outs o 
+				JOIN `order_out_details` d ON o.id = d.order_out_id
+				JOIN products p ON d.product_id = p.id
+				WHERE  o.user_id = ?  AND product_id = ?
+				GROUP BY
+				`product_id`", [$user_id,$id]);
+
+		$result = array();
+		foreach ($product as $row) {
+			$ltd = 5 * $row->avg_sales;
+			$ss = $ltd * 0.5;
+			$reorder = $ltd + $ss;
+			$forecast = sqrt((2 * $row->total * 15) / 2);
+
+			$result[$row->product_id] = array(
+				'product' => array(
+					'id' => $row->id,
+					'name' => $row->product_name,
+					'qty' => (int) $row->product_sku,
+					'sku' => $row->product_qty,
+					'price' => (int) $row->product_price,
+				),
+				'forecast' => array(
+					'reorder_point' => ceil($reorder),
+					'reorder_total' => ceil($forecast)
+				)
+			);
+		}
+		return array_values($result);
+	}
+
 	public function supplier()
 	{
 		return $this->hasMany('App\Model\SupplierProduct','product_id','id');

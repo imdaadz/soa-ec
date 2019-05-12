@@ -2,6 +2,8 @@
 
 namespace App\Model;
 
+use DB;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -41,7 +43,14 @@ class Supplier extends Model
 		return $this->hasMany('App\Model\OrderIn','supplier_id','id');
 	}
 
-	private function map_key($data){
+	public function check_product($product_id, $supplier_id){
+		$total = DB::table('supplier_products')
+		->where('product_id', $product_id)
+		->where('supplier_id', $supplier_id)
+		->count();
+		return $total;
+	}
+	private function map_key($data, $with_user = true){
 		$result = array();
 		
 
@@ -53,23 +62,23 @@ class Supplier extends Model
 			$result[$key] = $field;
 			
 		};
-
-		$result['user'] = array(
-			'id' => $data->user->id,
-			'name' => $data->user->name,
-		);
+		if($with_user)
+			$result['user'] = array(
+				'id' => $data->user->id,
+				'name' => $data->user->name,
+			);
 		return $result;
 	}
-	public function mapping($data){
+	public function mapping($data, $with_user = true){
 
 		$return = array();
 		if($data)
 			if(!empty($data[0]))
 				foreach ($data as $row) {
-					$return[] = $this->map_key($row);
+					$return[] = $this->map_key($row, $with_user);
 				}
 			else
-				$return = $this->map_key($data);
+				$return = $this->map_key($data, $with_user);
 		
 
 		return $return;

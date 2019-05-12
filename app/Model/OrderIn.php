@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class OrderIn extends Model
 {
-    protected $table = 'order_in';
+    protected $table = 'order_ins';
 
     public function user()
 	{

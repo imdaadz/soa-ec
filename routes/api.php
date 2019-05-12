@@ -54,5 +54,19 @@ Route::group(['prefix' => 'cart', 'middleware' => 'auth:api'], function () {
 	Route::post('checkout', 'api\CartController@checkout');
 });
 
+Route::group(['prefix' => 'po', 'middleware' => 'auth:api'], function () {
+	Route::post('new', 'api\POController@new');
+	Route::get('list/{po_id}', 'api\POController@list');
+	Route::post('add/{po_id}', 'api\POController@cart');
+	Route::post('update/{po_id}', 'api\POController@update');
+	Route::post('remove/{po_id}', 'api\POController@remove');
+	Route::post('checkout/{po_id}', 'api\POController@checkout');
+});
+
+Route::group(['prefix' => 'analytics', 'middleware' => 'auth:api'], function () {
+	Route::get('most_order', 'api\AnalyticsController@most');
+	Route::get('forecast', 'api\AnalyticsController@forecast');
+});
+
 
 Route::get('login', ['uses' => 'api\LoginController@loginTest', 'as' => 'api.login']);

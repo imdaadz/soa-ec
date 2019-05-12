@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class OrderInDetail extends Model
 {
-    protected $table = 'order_in_detail';
+    protected $table = 'order_in_details';
 
     public function header()
 	{

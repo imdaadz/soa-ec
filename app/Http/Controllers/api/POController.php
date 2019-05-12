@@ -11,17 +11,72 @@ use Illuminate\Validation\Rule;
 use App\Model\Supplier;
 use App\Model\Product;
 use App\Model\SupplierProduct;
-use App\Model\OrderOut;
-use App\Model\OrderOutDetail;
+use App\Model\OrderIn;
+use App\Model\OrderInDetail;
 
-class CartController extends Controller
+class POController extends Controller
 {
-	public function checkout(Request $request){
+
+	public function new(Request $request){
 		$user = $request->user();
+		$credentials = $request->only('supplier_id');
+		$rules = [
+			'supplier_id' => 'required|integer|max:255',
+		];
+		$validator = Validator::make($credentials, $rules);
+		if ($validator->fails()){
+			return response()->json(['success' => false, 'message' => $validator->messages() ]);
+		}
+		$supplier_model = new Supplier();
+		$supplier = Supplier::find($request->supplier_id);
+		if(!$supplier or $supplier->user_id != $user->id){
+			return response()->json([
+				'success' => false,
+				'message' => 'Supplier not found'
+			]);
+		}
+
+		$check_supplier = OrderIn::where('user_id', $user->id)
+						->where('supplier_id',$request->supplier_id)
+						->where('order_status',0)
+						->count();
+
+		if($check_supplier > 0){
+			return response()->json([
+				'success' => false,
+				'message' => 'Purchase Order with that supplier still active'
+			]);
+		}
+
+		$new = new OrderIn();
+		$new->user_id = $user->id;
+		$new->supplier_id = $request->supplier_id;
+		$new->order_status = 0;
+		$new->save();
+		
+		return response()->json([
+			'success' => true,
+			'message' => 'Successfully create new PO',
+			'data' => array(
+				'po_id' => $new->id,
+				'supplier' => $supplier_model->mapping($supplier, false),
+			)
+		]);
+	}
+
+	public function checkout(Request $request, $po_id){
+		$user = $request->user();
+		$po = OrderIn::find($po_id);
+		if(!$po or $po->user_id != $user->id or $po->order_status != 0){
+			return response()->json([
+				'success' => false,
+				'message' => 'Purchase Order not found'
+			]);
+		}
 
 		// make sure product is same with database
-		$this->list($request);
-		Cart::instance('out')->restore("$user->id");
+		$this->list($request, $po_id);
+		Cart::instance('in')->restore($user->id.'-'.$request->po_id);
 		$cart = Cart::content();
 		
 		DB::beginTransaction();
@@ -29,21 +84,19 @@ class CartController extends Controller
 
 		if(Cart::count() > 0){
 			try {
-				$out = new OrderOut();
-				$out->user_id = $user->id;
-				$out->save();
 				$insert = array();
 				foreach ($cart as $row) {
 					$insert[] = array(
-						'order_out_id' => $out->id,
+						'order_in_id' => $po_id,
 						'product_id' => $row->id,
 						'total_qty' => $row->qty,
 					);
-					Product::find($row->id)->decrement('product_qty', $row->qty);
+					Product::find($row->id)->increment('product_qty', $row->qty);
 
 				}
-				OrderOutDetail::insert($insert);
-
+				OrderInDetail::insert($insert);
+				$po->order_status = 1;
+				$po->save();
 				DB::commit();
 				$success = true;
 			} catch (\Exception $e) {
@@ -55,7 +108,7 @@ class CartController extends Controller
 
 		if ($success) {
 			Cart::destroy();
-			Cart::instance('out')->store("$user->id");
+			Cart::instance('in')->store($user->id.'-'.$request->po_id);
 			return response()->json([
 				'success' => true,
 				'message' => 'Successfully checkout'
@@ -70,6 +123,15 @@ class CartController extends Controller
 	}
 	public function cart(Request $request){
 		$user = $request->user();
+		$po = OrderIn::find($request->po_id);
+		if(!$po or $po->user_id != $user->id or $po->order_status != 0){
+			return response()->json([
+				'success' => false,
+				'message' => 'Purchase Order not found'
+			]);
+		}
+
+		$supplier = new Supplier();
 		$credentials = $request->only('product_id','qty');
 		$rules = [
 			'product_id' => 'required|integer|max:255', 
@@ -80,6 +142,7 @@ class CartController extends Controller
 			return response()->json(['success' => false, 'message' => $validator->messages() ]);
 		}
 
+
 		$product = Product::find($request->product_id);
 		if(!$product or $product->user_id != $user->id){
 			return response()->json([
@@ -87,6 +150,15 @@ class CartController extends Controller
 				'message' => 'Product not found'
 			]);
 		}
+		
+		$link =  $supplier->check_product($request->product_id, $po->supplier_id);
+		if($link < 1){
+			return response()->json([
+				'success' => false,
+				'message' => 'Product not linked with supplier'
+			]);
+		}
+
 		if($product->product_qty < $request->qty){
 			return response()->json([
 				'success' => false,
@@ -95,9 +167,9 @@ class CartController extends Controller
 		}
 
 
-		Cart::instance('out')->restore("$user->id");
+		Cart::instance('in')->restore($user->id.'-'.$request->po_id);
 		Cart::add($product->id, $product->product_name, $request->qty, $product->product_price);
-		Cart::instance('out')->store("$user->id");
+		Cart::instance('in')->store($user->id.'-'.$request->po_id);
 
 		return response()->json([
 			'success' => true,
@@ -105,10 +177,18 @@ class CartController extends Controller
 		]);		
 	}
 
-	public function list(Request $request){
+	public function list(Request $request, $po_id){
 		$user = $request->user();
+		$po = OrderIn::find($po_id);
+		if(!$po or $po->user_id != $user->id or $po->order_status != 0){
+			return response()->json([
+				'success' => false,
+				'message' => 'Purchase Order not found'
+			]);
+		}
+
 		$product_model = new Product();
-		Cart::instance('out')->restore("$user->id");
+		Cart::instance('in')->restore($user->id.'-'.$po_id);
 		$cart = Cart::content();
 		$product = array();
 		$change = array();
@@ -130,7 +210,7 @@ class CartController extends Controller
 				Cart::update($key, ['price' => $value]); 
 			}
 		}
-		Cart::instance('out')->store("$user->id");
+		Cart::instance('in')->store($user->id.'-'.$po_id);
 		return response()->json([
 			'success' => true,
 			'message' => 'Successfully retrived cart',
@@ -138,20 +218,29 @@ class CartController extends Controller
 		]);	
 	}
 
-	public function update(Request $request){
+	public function update(Request $request, $po_id){
 		$user = $request->user();
-		$credentials = $request->only('product_id','qty');
+		$po = OrderIn::find($po_id);
+		if(!$po or $po->user_id != $user->id or $po->order_status != 0){
+			return response()->json([
+				'success' => false,
+				'message' => 'Purchase Order not found'
+			]);
+		}
 
+
+		$credentials = $request->only('product_id','qty');
 		$rules = [
-			'product_id' => 'required|integer|max:255',
-			'qty' => 'required|integer|max:255',
+			'product_id' => 'required|integer|max:255', 
+			'qty' => 'required|integer|max:255', 
 		];
 		$validator = Validator::make($credentials, $rules);
 		if ($validator->fails()){
 			return response()->json(['success' => false, 'message' => $validator->messages() ]);
 		}
 
-		Cart::instance('out')->restore("$user->id");
+
+		Cart::instance('in')->restore($user->id.'-'.$po_id);
 		$cart = Cart::content();
 		$product_id = $request->product_id;
 		$cart_id = Cart::content()->where('id', $product_id);
@@ -178,7 +267,7 @@ class CartController extends Controller
 		}
 		Cart::update($id, ['qty' => $request->qty]); 
 		
-		Cart::instance('out')->store("$user->id");
+		Cart::instance('in')->store($user->id.'-'.$po_id);
 
 		return response()->json([
 			'success' => true,
@@ -186,8 +275,16 @@ class CartController extends Controller
 		]);	
 	}
 
-	public function remove(Request $request){
+	public function remove(Request $request, $po_id){
 		$user = $request->user();
+		$po = OrderIn::find($po_id);
+		if(!$po or $po->user_id != $user->id or $po->order_status != 0){
+			return response()->json([
+				'success' => false,
+				'message' => 'Purchase Order not found'
+			]);
+		}
+
 		$credentials = $request->only('product_id');
 
 		$rules = [
@@ -199,9 +296,9 @@ class CartController extends Controller
 		}
 
 
-		Cart::instance('out')->restore("$user->id");
-		$cart = Cart::content();
+		Cart::instance('in')->restore($user->id.'-'.$po_id);
 		$cart_id = Cart::content()->where('id', $request->product_id);
+		
 		if($cart_id->count() < 1){
 			return response()->json([
 				'success' => false,
@@ -210,9 +307,9 @@ class CartController extends Controller
 		}
 		$cart_id = array_keys(current($cart_id));
 		$cart_id = $cart_id[0];
-		
+
 		Cart::remove($cart_id);
-		Cart::instance('out')->store("$user->id");
+		Cart::instance('in')->store($user->id.'-'.$po_id);
 
 		return response()->json([
 			'success' => true,
