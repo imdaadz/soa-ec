@@ -64,6 +64,7 @@ Route::group(['prefix' => 'po', 'middleware' => 'auth:api'], function () {
 });
 
 Route::group(['prefix' => 'analytics', 'middleware' => 'auth:api'], function () {
+	Route::get('sales/{id}', 'api\AnalyticsController@sales');
 	Route::get('most_order', 'api\AnalyticsController@most');
 	Route::get('forecast', 'api\AnalyticsController@forecast');
 });

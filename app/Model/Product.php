@@ -51,6 +51,39 @@ class Product extends Model
 	{
 		return $this->belongsTo('App\User','user_id');
 	}
+
+	public function sale($product_id, $start, $end){
+		$query = 'SELECT
+			count(*) total,
+			date(o.created_at) date
+		FROM
+			products p
+		JOIN order_out_details d ON p.id = d.product_id
+		JOIN order_outs o ON o.id = order_out_id
+		WHERE DATE(o.created_at) between ? AND ?
+		AND p.id = ?
+		GROUP BY date(o.created_at)
+		ORDER BY date(o.created_at) DESC';
+		$product = DB::select($query,[$start, $end, $product_id]);
+		return $product;
+	}
+
+	public function po($product_id, $start, $end){
+		$query = 'SELECT
+			count(*) total,
+			date(o.created_at) date
+		FROM
+			products p
+		JOIN order_in_details d ON p.id = d.product_id
+		JOIN order_ins o ON o.id = d.order_in_id
+		WHERE DATE(o.created_at) between ? AND ?
+		AND p.id = ?
+		GROUP BY date(o.created_at)
+		ORDER BY date(o.created_at) DESC';
+		$product = DB::select($query,[$start, $end, $product_id]);
+		return $product;
+	}
+
 	public function most($user_id,$limit = 30, $offset = 0, $start = null, $end= null){
 		if(empty($start) and empty($end))
 			$product = DB::select("SELECT

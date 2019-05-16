@@ -44,6 +44,39 @@ class AnalyticsController extends Controller
 			'data' => $forecast
 		]);
 	}
+
+	public function sales(Request $request, $id){
+		$user = $request->user();
+		$product = Product::find($id);
+		$product_model = new Product();
+		if(!$product or $product->user_id != $user->id){
+			return response()->json([
+				'success' => false,
+				'message' => 'Product not found'
+			]);
+		}
+		$credentials = $request->only('start','end');
+		$rules = [
+			'start' => 'required|date|max:255', 
+			'end' => 'required|date|max:255', 
+		];
+		$validator = Validator::make($credentials, $rules);
+		if ($validator->fails()){
+			return response()->json(['success' => false, 'message' => $validator->messages() ]);
+		}
+
+		$data = array(
+			'product' => $product_model->mapping($product, false),
+			'sale' => $product_model->sale($id, $request->start,$request->end),
+			'purchase_order' => $product_model->po($id, $request->start,$request->end)
+		);
+		return response()->json([
+			'success' => true,
+			'message' => 'Successfully retrieved sales data',
+			'data' => $data
+		]);		
+	}
+
 	public function forecast(Request $request){
 		$user = $request->user();
 		$credentials = $request->only('product_id','limit','page');
